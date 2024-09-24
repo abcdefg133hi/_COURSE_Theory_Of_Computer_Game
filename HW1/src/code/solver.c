@@ -6,7 +6,7 @@
 #include "board.h"
 #include <stdlib.h>
 
-#define HEAP_MAX 100000000
+#define HEAP_MAX 30000000
 
 // Flag for if valid moved
 #define _IF_VALID_MOVE_ALL 0
@@ -18,6 +18,8 @@ int goal_piece;
 int min_step_to_move_goal[64][9][_dice_sequence_len_]; // piece_comb,distance,starting_point
 int path[_dice_sequence_len_][2];
 int time_depth = 100000000;
+int visit[6][100];
+int _step=0;
 
 int max(int num1, int num2)
 {
@@ -87,9 +89,10 @@ struct Heap *createHeap()
 {
     struct Heap *newHeap = (struct Heap *)malloc(sizeof(struct Heap));
 
-    newHeap->array = (Node *)malloc(sizeof(Node) * HEAP_MAX);
+    //newHeap->array = (Node *)malloc(sizeof(Node) * HEAP_MAX);
+    newHeap->array = (Node *)malloc(sizeof(Node) * 2);
     newHeap->size = 0;
-    newHeap->capacity = 1;
+    newHeap->capacity = 2;
     return newHeap;
 }
 
@@ -97,7 +100,13 @@ struct Heap* Insert(struct Heap* myHeap, Node node)
 {
     myHeap->size++;
     int size = myHeap->size;
-    myHeap->capacity++;
+
+    if(size+1==myHeap->capacity)
+    {
+	Node *arr_temp = (Node *)realloc(myHeap->array, myHeap->capacity*2*sizeof(Node));
+	myHeap->array = arr_temp;
+	myHeap->capacity *= 2;
+    }
 
     myHeap->array[size] = node;
     int next = size>>1;
@@ -114,6 +123,7 @@ struct Heap* Insert(struct Heap* myHeap, Node node)
 	    next = next>>1;
 	}
     }
+    if(myHeap->size > HEAP_MAX-10) myHeap->size--; // Prune the tree if the tree is almost full.
     return myHeap;
 }
 
@@ -331,15 +341,52 @@ int Distance(int num1, int num2)
 }
 
 
+int ScoreForTarget(Board *chessboard, int move[2])
+{
+    if(move[0]!=goal_piece) return 0;
+    if(chessboard->piece_position[goal_piece]%10==0)
+    {
+	if(move[1]!=(chessboard->piece_position[goal_piece]-10)) return -1000;
+    }
+    else if(chessboard->piece_position[goal_piece] / 10==0)
+    {
+	if(move[1]!=(chessboard->piece_position[goal_piece]-1)) return -1000;
+    }
+    else
+    {
+	if(move[1]==33) return -1000;
+	else if(move[1]==chessboard->piece_position[goal_piece]-11) return 30;
+	else if(move[1]==chessboard->piece_position[goal_piece]-10) return 5;
+	else if(move[1]==chessboard->piece_position[goal_piece]-1) return 5;
+	else return -1000;
+    }
+    return 30;
+}
 int ScoreForChess(Board *chessboard)
 {
     int score = 0;
     for(int i=0;i<6;i++){
 	if(chessboard->piece_position[i]!=-1) continue;
-	if(goal_piece-i==1 || goal_piece-i==-1) score += 15;
-	else score += 5;
+	if(goal_piece-i==1 || goal_piece-i==-1) score += 40;
+	else score += 15;
     }
     return score;
+}
+
+int CompareBoard(Board *board1, Board *board2)
+{
+    for(int i=0;i<6;i++)
+    {
+	if(board1->piece_position[i]!=board2->piece_position[i]) return 0;
+    }
+    return 1;
+}
+int CheckRepeatState(Node current, Node grandpa, int move[2], int pre_layer)
+{
+    if(grandpa==NULL) return 0;
+    if(pre_layer-1==0) return CompareBoard(grandpa->board, current->board);
+    if(CompareBoard(grandpa->board, current->board)==1) return 1;
+    return CheckRepeatState(current, grandpa->parent, move, pre_layer-1);
 }
 void Heuristic_Search(struct Heap *priority_queue)
 {
@@ -364,15 +411,27 @@ void Heuristic_Search(struct Heap *priority_queue)
 	if(!if_valid_move(moves[i], chessboard, _IF_VALID_MOVE_DIAGONAL_ONLY_CLOSE)) continue;
 	Board *child = (Board *)malloc(sizeof(Board));
 	CloneBoard(child, chessboard);
+	int scoreForTarget = ScoreForTarget(child,moves[i]);
+	if(scoreForTarget==-1000) continue;
+	if(CheckRepeatState(current,current->parent, moves[i], 10)) continue;
 	move(child, moves[i]);
+	int scoreforrepeat = 0;
+	if(visit[moves[i][0]][moves[i][1]] < (search_depth )) scoreforrepeat = -10;
+	else
+	{
+	    visit[moves[i][0]][moves[i][1]] = (search_depth);
+	}
 	if(child->piece_position[goal_piece]==-1) continue;
 	int goal_pos = child->piece_position[goal_piece];
-	int score = 10000 - 30*Distance(goal_pos,0) - 30*(search_depth - 1) + ScoreForChess(child); // My constructed heap is max-heap. I am lazy....
+	int score = 10000 - 30*Distance(goal_pos,0) - 30*(search_depth - 1) + ScoreForChess(child) + scoreForTarget + scoreforrepeat; // My constructed heap is max-heap. I am lazy....
     //printf("CH %d\n", child->piece_position[goal_piece]);
 	Node node = newNode(child, 0, score, search_depth+1, moves[i][0]+1,
 		            chessboard->piece_position[moves[i][0]], child->piece_position[moves[i][0]], current);
 	priority_queue = Insert(priority_queue, node);
     }
+//    printf("Size: %d\n", priority_queue->size);
+//    printf("Step: %d\n", _step);
+    _step++;
     Heuristic_Search(priority_queue);
 }
 void solve(prob_layout problem_layout)
@@ -399,6 +458,11 @@ void solve(prob_layout problem_layout)
     goal_piece = problem_layout.goal_piece - 1;
     srand(time(NULL));
 
+    for(int i=0;i<6;i++)
+    {
+	for(int j=0;j<100;j++) visit[i][j] = 50;
+	visit[i][chessboard.piece_position[i]] = 0;
+    }
     int score = 10000 - Distance(chessboard.piece_position[goal_piece],0); // My constructed heap is max-heap. I am lazy....
     Node node = newNode(&chessboard, 0, score, 0, -1,
 		        -1, -1,NULL);

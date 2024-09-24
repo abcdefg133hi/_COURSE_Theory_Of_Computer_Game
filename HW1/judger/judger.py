@@ -11,7 +11,10 @@ def judge_output(input_string:str,output_string:str,correct_time:float,ans_len:i
     output_len=int(output_lines[1])
     if output_len>=ans_len+2:
         return "WA"
-    output_steps=[int(number) for number in output_lines[2].rstrip().split()]
+    if output_len == 0:
+        output_steps=[]
+    else:
+        output_steps=[int(number) for number in output_lines[2].rstrip().split()]
     if len(output_steps)!=2*output_len:
         return "WA"
     input_lines=input_string.splitlines()
@@ -87,9 +90,7 @@ if not os.path.exists("./run"):
 
 total_score=0
 #limit: 4GibiBytes of RAM
-command="./run"
-
-#command="ulimit -v 4194304 && ./run"
+command="ulimit -v 4194304 && ./run"
 for i in range(problem_number):
     input_str=ProblemSetLines[i][0]+ProblemSetLines[i][1]+ProblemSetLines[i][2]
     print(f"{problem_list[i]} : ",end="")
@@ -104,7 +105,7 @@ for i in range(problem_number):
         if judge_result=="AC":
             total_score+=1
     except:
-    # handle timeout here
+    # handle timeout or error here
         print("RE/TLE")
 print(f"***** AC : {total_score}/{problem_number} *****")
 write_back()
